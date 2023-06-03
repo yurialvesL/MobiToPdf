@@ -2,8 +2,10 @@ using System;
 using System.Windows.Forms;
 using System.Globalization;
 using Aspose.Words;
+using System.Threading.Tasks;
 using Aspose.Words.Properties;
 using System.Runtime.InteropServices;
+using System.Diagnostics;
 
 namespace MobiToPdf
 {
@@ -22,6 +24,7 @@ namespace MobiToPdf
             progressBar1 = new ProgressBar();
             btn_convert = new Button();
             lbl_pdf = new Label();
+            Btn_Cancel = new Button();
             SuspendLayout();
             // 
             // lbl_title
@@ -53,14 +56,14 @@ namespace MobiToPdf
             // 
             // progressBar1
             // 
-            progressBar1.Location = new Point(39, 204);
+            progressBar1.Location = new Point(39, 194);
             progressBar1.Name = "progressBar1";
             progressBar1.Size = new Size(329, 23);
             progressBar1.TabIndex = 3;
             // 
             // btn_convert
             // 
-            btn_convert.Location = new Point(157, 132);
+            btn_convert.Location = new Point(109, 135);
             btn_convert.Name = "btn_convert";
             btn_convert.Size = new Size(75, 23);
             btn_convert.TabIndex = 4;
@@ -76,9 +79,20 @@ namespace MobiToPdf
             lbl_pdf.Size = new Size(0, 15);
             lbl_pdf.TabIndex = 5;
             // 
+            // Btn_Cancel
+            // 
+            Btn_Cancel.Location = new Point(190, 135);
+            Btn_Cancel.Name = "Btn_Cancel";
+            Btn_Cancel.Size = new Size(75, 23);
+            Btn_Cancel.TabIndex = 6;
+            Btn_Cancel.Text = "Cancelar";
+            Btn_Cancel.UseVisualStyleBackColor = true;
+            Btn_Cancel.Click += Btn_Cancel_Click;
+            // 
             // frm_mobiPdf
             // 
-            ClientSize = new Size(412, 266);
+            ClientSize = new Size(412, 258);
+            Controls.Add(Btn_Cancel);
             Controls.Add(lbl_pdf);
             Controls.Add(btn_convert);
             Controls.Add(progressBar1);
@@ -97,9 +111,14 @@ namespace MobiToPdf
         private Button btn_convert;
         private Label lbl_pdf;
         private Button btn_mobi;
+        private Button Btn_Cancel;
+        private CancellationTokenSource cancellationTokenSource;
+        private int progress = 1;
+        private string caminho = "";
 
         private void btn_mobi_Click(object sender, EventArgs e)
         {
+            bool validate = false;
             using (OpenFileDialog op = new OpenFileDialog())
             {
                 op.InitialDirectory = "C:\\";
@@ -108,23 +127,60 @@ namespace MobiToPdf
                 op.FilterIndex = 0;
                 op.RestoreDirectory = true;
 
-                if (op.ShowDialog() == DialogResult.OK)
+
+                while (validate != true)
                 {
-                    string caminho = op.FileName;
-                    txt_mobi.Text = caminho;
+                    if(op.ShowDialog() == DialogResult.OK)
+                    {
+                         caminho = op.FileName;
+                        if (!op.FileName.EndsWith(".mobi"))
+                        {
+                            MessageBox.Show("O arquivo selecionado não é um arquivo mobi\nEscolha o arquivo novamente", "Arquivo incorreto", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        }
+                        else 
+                        { 
+                            validate = true; 
+                        }
+                       
+
+                    }
+                   
                 }
+                txt_mobi.Text = caminho;
+
+                btn_mobi.Enabled = false;
             }
         }
 
-        private void btn_convert_Click(object sender, EventArgs e)
+        private async void btn_convert_Click(object sender, EventArgs e)
         {
             Document doc = new Document(txt_mobi.Text);
+            cancellationTokenSource = new CancellationTokenSource();
+            bool complete = false;
+            Task tk =   Task.WhenAll(ToPdf(doc, cancellationTokenSource));
+            while (await Task.WhenAny(tk, Task.Delay(5000)) != tk)
+            {
+                
+                    progressBar1.Value += 5;
+                
+
+            }
+            progressBar1.Value = progressBar1.Maximum;
+            Clearall();
+
+
+
+        }
+        private async Task ToPdf(Document doc, CancellationTokenSource token)
+        {
             string caminho = "";
             DocumentBuilder builder = new DocumentBuilder(doc);
             builder.PageSetup.Margins = Aspose.Words.Margins.Mirrored;
             builder.PageSetup.PageHeight = 1200;
             builder.PageSetup.PageWidth = 900;
             builder.PageSetup.Orientation = Aspose.Words.Orientation.Portrait;
+            builder.PageSetup.Orientation = Aspose.Words.Orientation.Portrait;
+            btn_convert.Enabled = false;
 
             using (OpenFileDialog op = new OpenFileDialog())
             {
@@ -137,13 +193,12 @@ namespace MobiToPdf
                 op.ShowReadOnly = true;
                 if (op.ShowDialog() == DialogResult.OK)
                 {
-                    caminho = op.FileName;
+                    caminho = op.FileName + ".pdf";
 
                 }
                 try
                 {
-                    doc.Save(caminho,SaveFormat.Pdf);
-                    
+                    await Task.Run(() => { doc.Save(caminho, SaveFormat.Pdf); });                        // método que converte
 
                 }
                 catch (Exception ex)
@@ -152,6 +207,25 @@ namespace MobiToPdf
                     MessageBox.Show($"s{ex.Message}", "Error Generate", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             }
+
+        }
+        private void  Clearall()
+        {
+
+            if (progressBar1.Value == 100)
+            {
+                MessageBox.Show("Download concluido com sucesso", "Sucesso", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                progressBar1.Value = 0;
+                progress = 0;
+                btn_convert.Enabled = true;
+                btn_mobi.Enabled = true;
+                txt_mobi.Text = "";
+            }
+        }
+
+        private void Btn_Cancel_Click(object sender, EventArgs e)
+        {
+            cancellationTokenSource.Cancel();
         }
     }
 }
